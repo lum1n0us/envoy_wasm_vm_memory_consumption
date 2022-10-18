@@ -126,17 +126,24 @@ def parse_report(report_path):
 
                 round["vm_name"] = m.groups()[0]
                 round["vm_insts"] = m.groups()[1]
-            elif line.startswith("VmSize"):
-                round["VmSize"] = parse_vmdata(line, "VmSize")
-            elif line.startswith("VmRSS"):
-                round["VmRSS"] = parse_vmdata(line, "VmRSS")
-            elif line.startswith("Threads"):
-                round["Threads"] = parse_threads(line, "Threads")
             elif line.startswith("--"):
                 memory_info.append(round)
                 round = {}
             else:
-                pass
+                if line.startswith("VmSize"):
+                    round["VmSize"] = parse_vmdata(line, "VmSize")
+                elif line.startswith("VmRSS"):
+                    round["VmRSS"] = parse_vmdata(line, "VmRSS")
+                elif line.startswith("RssAnon"):
+                    round["RssAnon"] = parse_vmdata(line, "RssAnon")
+                elif line.startswith("RssFile"):
+                    round["RssFile"] = parse_vmdata(line, "RssFile")
+                elif line.startswith("RssShmem"):
+                    round["RssShmem"] = parse_vmdata(line, "RssShmem")
+                elif line.startswith("Threads"):
+                    round["Threads"] = parse_threads(line, "Threads")
+                else:
+                    pass
     
     return memory_info
 
@@ -170,6 +177,8 @@ def analyze_report_data(report_data):
     v8_rounds = [r for r in report_data if r["vm_name"] == "v8"]
     result += fill_a_line(v8_rounds, "v8", "VmSize")
     result += fill_a_line(v8_rounds, "v8", "VmRSS")
+    result += fill_a_line(v8_rounds, "v8", "RssAnon")
+    result += fill_a_line(v8_rounds, "v8", "RssFile")
     result += fill_a_line(v8_rounds, "v8", "Threads")
 
     #
@@ -177,11 +186,20 @@ def analyze_report_data(report_data):
     wamr_rounds = [r for r in report_data if r["vm_name"] == "wamr"]
     result += fill_a_line(wamr_rounds, "wamr", "VmSize")
     result += fill_a_line(wamr_rounds, "wamr", "VmRSS")
+    result += fill_a_line(wamr_rounds, "wamr", "RssAnon")
+    result += fill_a_line(wamr_rounds, "wamr", "RssFile")
     result += fill_a_line(wamr_rounds, "wamr", "Threads")
 
+    #
+    # wasmtime
+    wamr_rounds = [r for r in report_data if r["vm_name"] == "wasmtime"]
+    result += fill_a_line(wamr_rounds, "wasmtime", "VmSize")
+    result += fill_a_line(wamr_rounds, "wasmtime", "VmRSS")
+    result += fill_a_line(wamr_rounds, "wasmtime", "RssAnon")
+    result += fill_a_line(wamr_rounds, "wasmtime", "RssFile")
+    result += fill_a_line(wamr_rounds, "wasmtime", "Threads")
+
     return result
-
-
 
 
 def main():
@@ -200,6 +218,13 @@ def main():
     start_envoy_and_collect_vm_info("wamr_1_vm", "exe_3_wamr/envoy-static", "envoy_wamr_1.yaml", report_path)
     start_envoy_and_collect_vm_info("wamr_2_vm", "exe_3_wamr/envoy-static", "envoy_wamr_2.yaml", report_path)
     start_envoy_and_collect_vm_info("wamr_3_vm", "exe_3_wamr/envoy-static", "envoy_wamr_3.yaml", report_path)
+    #
+    # wasmtime
+    start_envoy_and_collect_vm_info("wasmtime_1_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wasmtime_2_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wasmtime_3_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_3.yaml", report_path)
+    #
+    # wavm
 
     print("Start reporting...")
     report_data = parse_report(report_path)
