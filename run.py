@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+"""
+
+## Reference
+https://www.kernel.org/doc/html/latest/admin-guide/mm/concepts.html#concepts-overview
+https://manpages.ubuntu.com/manpages/focal/en/man5/proc.5.html
+"""
+
 import datetime
 import os
 import re
@@ -9,8 +16,8 @@ import subprocess
 import time
 import traceback
 
-def start_envoy(env_path, cfg="envoy.yaml"):
-    cmd = f"{env_path} -c {cfg} --concurrency 2"
+def start_envoy(envoy_path, cfg="envoy.yaml"):
+    cmd = f"{envoy_path} -c {cfg} --concurrency 2"
     p = subprocess.Popen(shlex.split(cmd), bufsize=1024, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     assert p is not None
 
@@ -73,6 +80,9 @@ def write_report(report_path, key, content):
 def start_envoy_and_collect_vm_info(key, envoy_path, cfg, report_path):
     envoy_proc = None
     try:
+        while os.path.islink(envoy_path):
+            envoy_path = os.readlink(envoy_path)
+
         envoy_proc  = start_envoy(envoy_path, cfg)
         assert envoy_proc is not None
 
@@ -166,38 +176,22 @@ def analyze_report_data(report_data):
     result = "# Summary "
     result += 2 * os.linesep
     result += "Collect from */proc/[pid]/status*"
+    # the header of the table
     result += 2 * os.linesep
     result += "| wasm vm | vm inst amount |1 vm | 2 vms | 3 vms | delta_1 | delta_2 | delta_avg |"
     result += os.linesep
     result += "| -- | -- | -- | -- | -- | -- | -- | -- |"
     result += os.linesep
 
-    #
-    # v8
-    v8_rounds = [r for r in report_data if r["vm_name"] == "v8"]
-    result += fill_a_line(v8_rounds, "v8", "VmSize")
-    result += fill_a_line(v8_rounds, "v8", "VmRSS")
-    result += fill_a_line(v8_rounds, "v8", "RssAnon")
-    result += fill_a_line(v8_rounds, "v8", "RssFile")
-    result += fill_a_line(v8_rounds, "v8", "Threads")
 
-    #
-    # wamr
-    wamr_rounds = [r for r in report_data if r["vm_name"] == "wamr"]
-    result += fill_a_line(wamr_rounds, "wamr", "VmSize")
-    result += fill_a_line(wamr_rounds, "wamr", "VmRSS")
-    result += fill_a_line(wamr_rounds, "wamr", "RssAnon")
-    result += fill_a_line(wamr_rounds, "wamr", "RssFile")
-    result += fill_a_line(wamr_rounds, "wamr", "Threads")
-
-    #
-    # wasmtime
-    wamr_rounds = [r for r in report_data if r["vm_name"] == "wasmtime"]
-    result += fill_a_line(wamr_rounds, "wasmtime", "VmSize")
-    result += fill_a_line(wamr_rounds, "wasmtime", "VmRSS")
-    result += fill_a_line(wamr_rounds, "wasmtime", "RssAnon")
-    result += fill_a_line(wamr_rounds, "wasmtime", "RssFile")
-    result += fill_a_line(wamr_rounds, "wasmtime", "Threads")
+    # rows of the table
+    for key in ["v8", "wasmtime", "wamr-5-18-22", "wamr-1-1-0", "wamr-1-1-0-dis", "wamr-fbac", "wamr-fbac-dis","wamr-clone", "wamr-clone-dis"]:
+        rounds = [r for r in report_data if r["vm_name"] == key]
+        result += fill_a_line(rounds, key, "VmSize")
+        result += fill_a_line(rounds, key, "VmRSS")
+        result += fill_a_line(rounds, key, "RssAnon")
+        result += fill_a_line(rounds, key, "RssFile")
+        result += fill_a_line(rounds, key, "Threads")
 
     return result
 
@@ -214,17 +208,39 @@ def main():
     start_envoy_and_collect_vm_info("v8_2_vm", "exe_2_v8/envoy-static", "envoy_v8_2.yaml", report_path)
     start_envoy_and_collect_vm_info("v8_3_vm", "exe_2_v8/envoy-static", "envoy_v8_3.yaml", report_path)
     #
-    # wamr
-    start_envoy_and_collect_vm_info("wamr_1_vm", "exe_3_wamr/envoy-static", "envoy_wamr_1.yaml", report_path)
-    start_envoy_and_collect_vm_info("wamr_2_vm", "exe_3_wamr/envoy-static", "envoy_wamr_2.yaml", report_path)
-    start_envoy_and_collect_vm_info("wamr_3_vm", "exe_3_wamr/envoy-static", "envoy_wamr_3.yaml", report_path)
-    #
     # wasmtime
     start_envoy_and_collect_vm_info("wasmtime_1_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_1.yaml", report_path)
     start_envoy_and_collect_vm_info("wasmtime_2_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_2.yaml", report_path)
     start_envoy_and_collect_vm_info("wasmtime_3_vm", "exe_4_wasmtime/envoy-static", "envoy_wasmtime_3.yaml", report_path)
     #
-    # wavm
+    # wamr
+    start_envoy_and_collect_vm_info("wamr-5-18-22_1_vm", "exe_1_wamr_05_18_22/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-5-18-22_2_vm", "exe_1_wamr_05_18_22/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-5-18-22_3_vm", "exe_1_wamr_05_18_22/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-1-1-0_1_vm", "exe_1_wamr_1_1_0/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-1-1-0_2_vm", "exe_1_wamr_1_1_0/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-1-1-0_3_vm", "exe_1_wamr_1_1_0/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-1-1-0-dis_1_vm", "exe_1_wamr_1_1_0_dis_b_c/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-1-1-0-dis_2_vm", "exe_1_wamr_1_1_0_dis_b_c/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-1-1-0-dis_3_vm", "exe_1_wamr_1_1_0_dis_b_c/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-fbac_1_vm", "exe_1_wamr_fbac/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-fbac_2_vm", "exe_1_wamr_fbac/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-fbac_3_vm", "exe_1_wamr_fbac/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-fbac-dis_1_vm", "exe_1_wamr_fbac_dis_b_c/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-fbac-dis_2_vm", "exe_1_wamr_fbac_dis_b_c/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-fbac-dis_3_vm", "exe_1_wamr_fbac_dis_b_c/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-clone_1_vm", "exe_1_wamr_clone/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-clone_2_vm", "exe_1_wamr_clone/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-clone_3_vm", "exe_1_wamr_clone/envoy-static", "envoy_wamr_3.yaml", report_path)
+
+    start_envoy_and_collect_vm_info("wamr-clone-dis_1_vm", "exe_1_wamr_clone_dis_b_c/envoy-static", "envoy_wamr_1.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-clone-dis_2_vm", "exe_1_wamr_clone_dis_b_c/envoy-static", "envoy_wamr_2.yaml", report_path)
+    start_envoy_and_collect_vm_info("wamr-clone-dis_3_vm", "exe_1_wamr_clone_dis_b_c/envoy-static", "envoy_wamr_3.yaml", report_path)
 
     print("Start reporting...")
     report_data = parse_report(report_path)
